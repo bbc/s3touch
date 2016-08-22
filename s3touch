@@ -7,6 +7,7 @@ var argv = require('minimist')(process.argv.slice(2), {
 var s3paths = argv._;
 var cache = {};
 var topic = null;
+var lambda = null;
 var requesterPays = false;
 
 if (s3paths.length < 1) {
@@ -17,7 +18,10 @@ if (argv.topic === true) {
     console.log(s3touch.usage());
     process.exit(1);
 }
-
+if (argv.lambda === true) {
+    console.log(s3touch.usage());
+    process.exit(1);
+}
 function run(err, data) {
     if (err) {
         console.warn(err.toString());
@@ -28,11 +32,12 @@ function run(err, data) {
         s3paths.shift();
     }
     if (s3paths.length) {
-        s3touch.touch(s3paths[0], cache, topic, requesterPays, run);
+        s3touch.touch(s3paths[0], cache, topic, lambda, requesterPays, run);
     }
 }
 
 if (argv.topic) topic = argv.topic;
+if (argv.lambda) lambda = argv.lambda;
 if (argv.requesterpays) requesterPays = true;
 
 if (argv.recursive) {
