@@ -5,7 +5,7 @@ s3touch
 
 Utility to simulate S3 events without actually re-PUTing objects to S3.
 
-    Usage: s3touch <s3 path> [--topic <arn string>]
+    Usage: s3touch <s3 path> [--topic <ARN string>] [--lambda <function name] [--workers <number of parallel workers>] [--recursive] [--requesterpays]
 
     # touch a single object
     s3touch s3://my-bucket/some-object
@@ -16,7 +16,13 @@ Utility to simulate S3 events without actually re-PUTing objects to S3.
     # touch a single object with custom SNS topic
     s3touch s3://my-bucket/some-object --topic arn:aws:sns:us-east-1:1234:this-bucket-s3-events
 
-- Looks up SNS topic that is subscribed to the given S3 bucket,
+    # touch a single object with custom lambda name
+    s3touch s3://my-bucket/some-object --lambda SomeLambdaName
+
+    # touch all objects under a prefix with parallel calls
+    s3touch --recursive s3://my-bucket/some-prefix/ --workers 10
+
+- Looks up SNS topic or lambda that is subscribed to the given S3 bucket,
 - Looks up information about `some-object` (size, etag),
 - and sends a simulated S3 event message to the SNS topic already set within the bucket or to the SNS topic explictly sent via the `--topic` flag
 
