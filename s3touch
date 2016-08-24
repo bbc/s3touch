@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 
 var s3touch = require('./index.js');
+var async = require('async');
 var argv = require('minimist')(process.argv.slice(2), {
-    boolean: [ 'recursive' ]
+    boolean: ['recursive']
 });
+
 var s3paths = argv._;
 var cache = {};
 var topic = null;
+var lambda = null;
 var requesterPays = false;
+var workers = 1;
 
 if (s3paths.length < 1) {
     console.log(s3touch.usage());
@@ -17,26 +21,39 @@ if (argv.topic === true) {
     console.log(s3touch.usage());
     process.exit(1);
 }
+if (argv.lambda === true) {
+    console.log(s3touch.usage());
+    process.exit(1);
+}
+if (argv.workers === true) {
+    console.log(s3touch.usage());
+    process.exit(1);
+}
 
-function run(err, data) {
-    if (err) {
-        console.warn(err.toString());
-        process.exit(1);
-    }
-    if (data) {
-        console.log('ok - ' + s3paths[0]);
-        s3paths.shift();
-    }
+function run() {
     if (s3paths.length) {
-        s3touch.touch(s3paths[0], cache, topic, requesterPays, run);
+        async.eachOfLimit(s3paths, workers, function (path, index, callback) {
+            s3touch.touch(path, cache, topic, lambda, requesterPays, function (err, data) {
+                if (err) callback(err)
+                console.log('ok - ' + path);
+                callback(null);
+            });
+        }.bind(s3touch), function (err) {
+            if (err) {
+                console.err(err.toString());
+                process.exit(1);
+            }
+        })
     }
 }
 
 if (argv.topic) topic = argv.topic;
+if (argv.lambda) lambda = argv.lambda;
 if (argv.requesterpays) requesterPays = true;
+if (argv.workers) workers = argv.workers;
 
 if (argv.recursive) {
-    s3touch.list(s3paths[0], function(err, list) {
+    s3touch.list(s3paths[0], function (err, list) {
         if (err) {
             console.warn(err.toString());
             process.exit(1);

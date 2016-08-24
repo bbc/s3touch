@@ -1,8 +1,17 @@
 var AWS = require('aws-sdk');
-var url = require('url');
+var url = require('url');   
+var proxy = require('proxy-agent');
+
+if(process.env.https_proxy) {
+    AWS.config.update({
+        httpOptions: { agent: proxy(process.env.https_proxy) }
+    }); 
+}
+
 var region = process.env.AWS_DEFAULT_REGION || 'us-east-1';
 var sns = new AWS.SNS({ region: region });
 var s3 = new AWS.S3({ region: region });
+var lambda = new AWS.Lambda({ region: region });
 
 module.exports = {};
 module.exports.usage = usage;
@@ -11,10 +20,10 @@ module.exports.createMessage = createMessage;
 module.exports.list = list;
 
 function usage() {
-    return 'Usage: s3touch <s3 path> [--topic <ARN string>] [--requesterpays]';
+    return 'Usage: s3touch <s3 path> [--topic <ARN string>] [--lambda <function name] [--workers <number of parallel workers>] [--recursive] [--requesterpays]';
 }
 
-function touch(s3path, cache, topic, requesterPays, callback) {
+function touch(s3path, cache, topic, lambda, requesterPays, callback) {
     var uri = url.parse(s3path);
     var bucket = uri.hostname;
     var objkey = (uri.pathname||'').substr(1);
@@ -26,13 +35,27 @@ function touch(s3path, cache, topic, requesterPays, callback) {
 
         if (topic) {
             publishEvent(topic, message, callback);
+        } else if (lambda) {
+            triggerLambda(lambda, message, callback);
         } else if (cache[bucket]) {
-            publishEvent(cache[bucket], message, callback);
+            if (cache[bucket]["topic"]){
+                publishEvent(cache[bucket]["topic"], message, callback);   
+            }
+            else if (cache[bucket]["lambda"]){
+                triggerLambda(cache[bucket]["lambda"], message, callback);    
+            }
         } else {
             s3.getBucketNotification({ Bucket: bucket }, function(err, data) {
-                if (err) return callback(new Error('Could not get bucket SNS topic ("'+(err.message||err.statusCode)+'")'));
-                cache[bucket] = data.TopicConfiguration.Topic;
-                publishEvent(cache[bucket], message, callback);
+                if (err) return callback(new Error('Could not get bucket event target ("'+(err.message||err.statusCode)+'")'));
+                if (data.TopicConfiguration) {
+                    console.log("Target is topic: " + data.TopicConfiguration);
+                    cache[bucket] = {"topic": data.TopicConfiguration.Topic};
+                    publishEvent(cache[bucket]["topic"], message, callback);
+                } else if (data.CloudFunctionConfiguration) {
+                    console.log("Target is lambda: " + data.CloudFunctionConfiguration.CloudFunction);
+                    cache[bucket] = {"lambda": data.CloudFunctionConfiguration.CloudFunction};
+                    triggerLambda(cache[bucket]["lambda"], message, callback);    
+                };
             });
         }
     });
@@ -76,6 +99,13 @@ function createMessage(bucket, objkey, requesterPays, callback) {
 function publishEvent(topic, message, callback) {
     sns.publish({ TopicArn: topic, Message: JSON.stringify(message) }, function(err, data) {
         if (err) return callback(new Error('Could not send SNS message ("' + (err.message||err.statusCode) + '")'));
+        return callback(null, data);
+    });
+}
+
+function triggerLambda(functionName, message, callback) {
+    lambda.invoke({ FunctionName: functionName, Payload: JSON.stringify(message), InvocationType: 'Event'}, function(err, data) {
+        if (err) return callback(new Error('Could not trigger lambda ("' + (err.message||err.statusCode) + '")'));
         return callback(null, data);
     });
 }
