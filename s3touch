@@ -40,7 +40,7 @@ function run() {
             });
         }.bind(s3touch), function (err) {
             if (err) {
-                console.err(err.toString());
+                console.error(err.toString());
                 process.exit(1);
             }
         })
@@ -64,4 +64,3 @@ if (argv.recursive) {
 } else {
     run();
 }
-
